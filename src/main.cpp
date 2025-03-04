@@ -10,6 +10,10 @@
 #define CHARACTERISTIC_UUID "12345678-1234-5678-1234-56789abcdef1"
 #define HALL_SENSOR_PIN 4
 #define UPDATE_INTERVAL 1000
+#define DEBOUNCE_US 1000
+
+
+
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
@@ -17,30 +21,32 @@ bool deviceConnected = false;
 
 // Global variables
 volatile unsigned long pulseCount = 0;
+volatile unsigned long lastPulseTime = 0;
 unsigned long lastUpdateTime = 0;
-float rpm = 0.0;
 
-// Function prototypes
-void initializeHallSensor();
-void updateRPM();
 
 void countPulse() {
-    pulseCount++;
+    unsigned long currentTime = micros();
+    if ((currentTime - lastPulseTime) > DEBOUNCE_US) {
+        pulseCount++;
+    }
+    lastPulseTime = currentTime;
 }
 
 void initializeHallSensor() {
     pinMode(HALL_SENSOR_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), countPulse, RISING);
+    attachInterrupt(digitalPinToInterrupt(HALL_SENSOR_PIN), countPulse, FALLING);
   }
 
-void updateRPM() {
+float getHz() {
+    
     noInterrupts();
     unsigned long currentPulseCount = pulseCount;
     pulseCount = 0;
     interrupts();
 
     unsigned long elapsedTime = millis() - lastUpdateTime;
-    rpm = currentPulseCount * (60000.0 / elapsedTime);
+    return currentPulseCount * (1000.0 / elapsedTime);
   }
 
 
@@ -62,22 +68,22 @@ void setup() {
     
 
     // Initialize BLE
-    BLEDevice::init("Jetblack Power Meter");
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
+    // BLEDevice::init("Jetblack Power Meter");
+    // pServer = BLEDevice::createServer();
+    // pServer->setCallbacks(new MyServerCallbacks());
     
-    BLEService *pService = pServer->createService(SERVICE_UUID);
+    // BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_NOTIFY
-    );
-    pService->start();
+    // pCharacteristic = pService->createCharacteristic(
+    //     CHARACTERISTIC_UUID,
+    //     BLECharacteristic::PROPERTY_NOTIFY
+    // );
+    // pService->start();
     
-    BLEAdvertising *pAdvertising = pServer->getAdvertising();
-    pAdvertising->start();
+    // BLEAdvertising *pAdvertising = pServer->getAdvertising();
+    // pAdvertising->start();
     
-    Serial.println("BLE Server is ready and advertising...");
+    // Serial.println("BLE Server is ready and advertising...");
 
     initializeHallSensor();
 }
@@ -91,18 +97,17 @@ void loop() {
     
   
     if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
-      updateRPM();
+    float Hz = getHz();
       lastUpdateTime = currentTime;
 
-      Serial.print("Speed: ");
-      Serial.println(rpm);
+      Serial.print("Freq: ");
+      Serial.println(Hz);
 
           // Broadcast power meter data if a device is connected
-        if (deviceConnected) {
-            pCharacteristic->setValue(rpm);
-            pCharacteristic->notify();
-        }
+        // if (deviceConnected) {
+        //     pCharacteristic->setValue(rpm);
+        //     pCharacteristic->notify();
+        // }
     }
 
-    delay(1000); // Adjust the delay as needed
 }
